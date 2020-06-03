@@ -142,7 +142,7 @@ def parse_ping_info(info):
     return rcv, sent - rcv
 
 def write_stat(stat):
-    with open('/home/mininet/output/black_hole.txt', 'w+') as f:
+    with open('/home/mininet/output/fake_link.txt', 'w+') as f:
         for tick in stat:
             f.write(str(tick) + " " + str(stat[tick][0]) + " " +
                     str(stat[tick][1]) + " " + str(stat[tick][2]) +  "\n")
@@ -177,6 +177,33 @@ def switch_black_hole(stop, net):
         if stop():
             break
 
+def fake_link_injection(net, fake_links):
+    time.sleep(50)
+    for s1, s2 in fake_links:
+        net.configLinkStatus(s1, s2, 'down')
+
+    print("!!!!Links down!!!!!")
+
+
+def generate_fake_links(net):
+    fake_links = set()
+
+    for i in range(18):
+        num1, num2 = -1, -1
+        while num1 >= num2:
+            num1 = random.randint(1, 40)
+            num2 = random.randint(1, 40)
+
+        s1 = net.get('s' + str(num1))
+        s2 = net.get('s' + str(num2))
+
+        link = net.addLink(s1, s2, bw = 1000)
+        s1.attach(link.intf1)
+        s2.attach(link.intf2)
+
+        fake_links.add(('s' + str(num1), 's' + str(num2)))
+
+    return fake_links
 
 def form_requests(net, traffic_data, sw_hosts):
     requests = {}
@@ -239,8 +266,11 @@ def generate_traffic(net, requests):
     start_dos_tick = -1#3000
     stop_dos_tick =  -1#4000
 
-    start_black_hole_tick = 3000
-    stop_black_hole_tick = 4000
+    start_black_hole_tick = -1#3000
+    stop_black_hole_tick = -1 #4000
+
+    start_fake_link = 3000
+    stop_fake_link = 4000
 
     prc_use = 0
 
@@ -250,6 +280,8 @@ def generate_traffic(net, requests):
 
     stop_black_hole = False
     black_hole = threading.Thread(target = switch_black_hole, args = (lambda : stop_black_hole, net))
+
+    fake_link = None
 
     q = Queue()
     cpu_q = Queue()
@@ -283,6 +315,15 @@ def generate_traffic(net, requests):
             print("Start black hole")
             black_hole.start()
 
+        if (tick == start_fake_link):
+            print("Start fake link injection")
+
+            links = generate_fake_links(net)
+            print(links)
+
+            fake_link = threading.Thread(target = fake_link_injection, args = (net, links))
+            fake_link.start()
+
         for generator in generators:
             generator.join()
 
@@ -314,6 +355,9 @@ def generate_traffic(net, requests):
             black_hole.join()
             print("Stop black hole")
 
+        if tick == stop_fake_link:
+            fake_link.join()
+            print("Stop fake link injection")
 
         loss = float(total_packages_loss) / (total_packages_loss + total_packages_rcv)
         rcv =  float(total_packages_rcv) / (total_packages_loss + total_packages_rcv)
@@ -370,5 +414,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
